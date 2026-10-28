@@ -70,11 +70,6 @@ def create_ask_endpoint(
             )
         )
 
-    # endpoint.__name__ = f"ask_{question_id.replace('-', '_')}"
-    # endpoint.__signature__ = inspect.Signature(
-    #     parameters=signature_params,
-    #     return_annotation=dict[str, Any],
-    # )
     name = f"ask_{question_id.replace('-', '_')}"
     signature = inspect.Signature(
         parameters=signature_params,
