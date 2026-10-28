@@ -1,0 +1,6 @@
+# rdflib
+requests
+fastapi
+pytest
+uvicorn
+httpx2

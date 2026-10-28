@@ -4,8 +4,6 @@ From the root directory (thus is not from the `src` directory) run `uvicorn src.
 
 # How to run tests
 
-**REMARK**: The tests itself is not relevant yet so they will fail.
-
 From the root project directory run `PYTHONPATH=. pytest`.
 
 # Description of the API
