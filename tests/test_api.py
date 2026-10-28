@@ -10,7 +10,10 @@ client = TestClient(app)
 
 
 def test_ask_reaction():
-    """Test that reaction queries between two substances return shared and individual Rhea reactions."""
+    """
+    Test that reaction queries between two substances
+    return shared and individual Rhea reactions.
+    """
     response = client.get("/api/v1/ask/reaction?substance=glucose&other_substance=ATP")
     assert response.status_code == 200
     data = response.json()
