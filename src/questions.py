@@ -14,7 +14,9 @@ import re
 import json
 from urllib.parse import urlsplit
 
-from .knowledge_graph import WikidataStore, get_knowledge_graph_store
+from requests import HTTPError
+
+from .knowledge_graph import WikidataStore
 from .rhea_store import RheaStore
 
 
@@ -26,11 +28,11 @@ class QuestionService:
 
     def __init__(
         self,
-        wikidata_store: WikidataStore | None = None,
-        rhea_store: RheaStore | None = None,
+        wikidata_store: WikidataStore,
+        rhea_store: RheaStore,
     ):
-        self.wikidata = wikidata_store or get_knowledge_graph_store()
-        self.rhea = rhea_store or RheaStore()
+        self.wikidata = wikidata_store
+        self.rhea = rhea_store
 
     def _chebi_ids_for_qid(self, qid: str) -> list[str]:
         if not re.fullmatch(r"Q\d+", qid):
@@ -56,11 +58,11 @@ class QuestionService:
 
         return sorted(ids)
 
-    def _run_question(self, query: str, result_key: str) -> list[dict]:
+    def _run_question(self, query: str) -> list[dict]:
         try:
             rows = self._query(query)
             return [{key: self._value(row, key) for key in row} for row in rows]
-        except Exception as exc:
+        except HTTPError as exc:
             return [{"error": f"Query failed: {exc}"}]
 
     def _query(self, query_str: str) -> list[dict]:
@@ -131,7 +133,7 @@ class QuestionService:
         }}
         """
 
-        results = {}
+        results: dict[str, dict] = {}
 
         for row in self.wikidata.query(query):
             entity_uri = self._row_value(row, "entity")
@@ -162,39 +164,6 @@ class QuestionService:
                 str(self._row_value(row, key)).lower() == "true"
                 for key in ("has_pubchem", "has_cas", "has_formula")
             )
-
-        # # Query mixture membership separately in batches.
-        # batch_size = 10
-
-        # for start in range(0, len(qids), batch_size):
-        #     batch = qids[start : start + batch_size]
-        #     batch_values = " ".join(f"wd:{qid}" for qid in batch)
-
-        #     mixture_query = f"""
-        #     PREFIX wd: <http://www.wikidata.org/entity/>
-        #     PREFIX wdt: <http://www.wikidata.org/prop/direct/>
-
-        #     SELECT DISTINCT ?entity WHERE {{
-        #         VALUES ?entity {{ {batch_values} }}
-        #         ?entity wdt:P31/wdt:P279* wd:Q169336 .
-        #     }}
-        #     """
-
-        #     for row in self.wikidata.query(mixture_query):
-        #         entity_uri = self._row_value(row, "entity")
-        #         match = re.search(r"/(Q\d+)$", str(entity_uri or ""))
-        #         if match:
-        #             qid = match.group(1)
-        #             info = results.setdefault(
-        #                 qid,
-        #                 {
-        #                     "chemical_classes": set(),
-        #                     "is_mixture": False,
-        #                     "has_chebi": False,
-        #                     "has_other_chemical_identifier": False,
-        #                 },
-        #             )
-        #             info["is_mixture"] = True
 
         # Keep only recognized chemical classes or mixtures.
         return {
@@ -268,19 +237,6 @@ class QuestionService:
         chemical_candidates = [
             candidate for candidate in candidates if candidate["qid"] in info_by_qid
         ]
-        # chemical_candidates = [
-        #     candidate
-        #     for candidate in candidates
-        #     if candidate["qid"] in info_by_qid
-        #     and (
-        #         info_by_qid[candidate["qid"]]["chemical_classes"]
-        #         or info_by_qid[candidate["qid"]]["is_mixture"]
-        #     )
-        # ]
-
-        # # Fall back to all candidates if no recognized chemical entity is found.
-        # if not chemical_candidates:
-        #     chemical_candidates = candidates
 
         if not chemical_candidates:
             raise ValueError(
@@ -314,6 +270,7 @@ class QuestionService:
 
     # DONE
     def answer_reaction(self, substance: str, other_substance: str) -> dict:
+        """Get information about reaction between two substances."""
         qid_a = self._resolve_entity(substance)
         qid_b = self._resolve_entity(other_substance)
 
@@ -426,7 +383,7 @@ class QuestionService:
         LIMIT {self.LIMIT}
         """
 
-        properties = self._run_question(query, "properties")
+        properties = self._run_question(query)
 
         # Resolve unit URIs separately; get_label() can cache repeated lookups.
         for item in properties:
@@ -487,7 +444,7 @@ class QuestionService:
         return {
             "question_id": "substance-kind",
             "substance": substance,
-            "kinds": self._run_question(query, "kinds"),
+            "kinds": self._run_question(query),
         }
 
     # DONE
@@ -534,7 +491,7 @@ class QuestionService:
         }}
         LIMIT {self.LIMIT}
         """
-        properties = self._run_question(query, "properties")
+        properties = self._run_question(query)
 
         for row in properties:
             if "error" not in row and row.get("unit"):
@@ -591,7 +548,7 @@ class QuestionService:
         ORDER BY ?componentLabel
         """
 
-        rows = self._run_question(query, "components")
+        rows = self._run_question(query)
 
         error = next(
             (row["error"] for row in rows if isinstance(row, dict) and "error" in row),

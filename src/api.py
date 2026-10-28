@@ -9,6 +9,8 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Query
 
 from .questions import QuestionService
+from .knowledge_graph import WikidataStore
+from .rhea_store import RheaStore
 
 
 app = FastAPI(
@@ -20,7 +22,7 @@ app = FastAPI(
     version="1.0.0",
 )
 
-question_service = QuestionService()
+question_service = QuestionService(WikidataStore(), RheaStore())
 
 
 def create_ask_endpoint(
@@ -68,11 +70,18 @@ def create_ask_endpoint(
             )
         )
 
-    endpoint.__name__ = f"ask_{question_id.replace('-', '_')}"
-    endpoint.__signature__ = inspect.Signature(
+    # endpoint.__name__ = f"ask_{question_id.replace('-', '_')}"
+    # endpoint.__signature__ = inspect.Signature(
+    #     parameters=signature_params,
+    #     return_annotation=dict[str, Any],
+    # )
+    name = f"ask_{question_id.replace('-', '_')}"
+    signature = inspect.Signature(
         parameters=signature_params,
         return_annotation=dict[str, Any],
     )
+    setattr(endpoint, "__name__", name)
+    setattr(endpoint, "__signature__", signature)
 
     app.get(
         f"/api/v1/ask/{question_id}",

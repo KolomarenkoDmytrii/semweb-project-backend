@@ -1,13 +1,34 @@
 """
-knowledge_graph.py
 Wikidata SPARQL store wrapper using the requests library.
 """
 
-import json
+from collections.abc import Mapping
+
 import re
 import requests
 
 WIKIDATA_ENDPOINT = "https://query.wikidata.org/sparql"
+
+
+class Row:
+    """Row of returned SPARQL results"""
+
+    def __init__(
+        self,
+        var_names: list[str],
+        binding_dict: Mapping[str, Mapping[str, str]],
+    ) -> None:
+        self._values: dict[str, str | None] = {
+            name: binding_dict[name].get("value") if name in binding_dict else None
+            for name in var_names
+        }
+
+    def __getattr__(self, name: str) -> str | None:
+        return self._values.get(name)
+
+    def asdict(self) -> dict[str, str | None]:
+        """Return SPARQL results row data as a dict."""
+        return self._values.copy()
 
 
 class WikidataStore:
@@ -16,29 +37,22 @@ class WikidataStore:
     def __init__(self):
         self._label_cache = {}
 
-    def query(self, query_str: str):
+    def query(self, query_str: str) -> list[Row]:
+        """Send SPARQL query to Wikidata endpoint and return results."""
         headers = {
             "Accept": "application/sparql-results+json",
             "User-Agent": "ChemrofAPI/1.0 (Python requests client)",
         }
         params = {"query": query_str}
 
-        response = requests.get(WIKIDATA_ENDPOINT, headers=headers, params=params)
+        response = requests.get(
+            WIKIDATA_ENDPOINT, headers=headers, params=params, timeout=480
+        )
         response.raise_for_status()
 
         data = response.json()
         variables = data.get("head", {}).get("vars", [])
         bindings = data.get("results", {}).get("bindings", [])
-
-        class Row:
-            def __init__(self, var_names, binding_dict):
-                self._var_names = var_names
-                for name in var_names:
-                    value = binding_dict.get(name)
-                    setattr(self, name, value.get("value") if value else None)
-
-            def asdict(self):
-                return {name: getattr(self, name, None) for name in self._var_names}
 
         rows = []
         for binding in bindings:
@@ -82,25 +96,23 @@ class WikidataStore:
         limit: int = 10,
     ) -> list[dict]:
         """Search Wikidata items by name using its entity-search API."""
+        params: dict[str, str | int] = {
+            "action": "wbsearchentities",
+            "search": search,
+            "language": language,
+            "uselang": language,
+            "type": "item",
+            "limit": limit,
+            "format": "json",
+        }
+
         response = requests.get(
             "https://www.wikidata.org/w/api.php",
-            params={
-                "action": "wbsearchentities",
-                "search": search,
-                "language": language,
-                "uselang": language,
-                "type": "item",
-                "limit": limit,
-                "format": "json",
-            },
+            params=params,
             headers={
-                "User-Agent": "ChemrofAPI/1.0 (Python requests client)",
+                "User-Agent": "semweb-prj-backend/1.0 (Python requests client)",
             },
             timeout=(5, 20),
         )
         response.raise_for_status()
         return response.json().get("search", [])
-
-
-def get_knowledge_graph_store() -> WikidataStore:
-    return WikidataStore()

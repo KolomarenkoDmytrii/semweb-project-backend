@@ -1,10 +1,10 @@
+"""
+Rhea DB store wrapper using the requests library.
+"""
+
 import csv
 import io
 import re
-
-import logging
-
-logger = logging.getLogger(__name__)
 
 import requests
 
@@ -21,7 +21,7 @@ class RheaStore:
         self._session = requests.Session()
         self._session.headers.update(
             {
-                "User-Agent": "ChemrofAPI/1.0 (Python requests client; contact: you@example.org)",
+                "User-Agent": "semweb-prj-backend/1.0 (Python requests client)",
             }
         )
 
@@ -31,38 +31,20 @@ class RheaStore:
             return []
         return list(csv.DictReader(io.StringIO(text), delimiter="\t"))
 
-    # def _get_tsv(self, query: str, columns: str) -> list[dict]:
-    #     response = self._session.get(
-    #         RHEA_ENDPOINT,
-    #         params={
-    #             "query": query,
-    #             "columns": columns,
-    #             "format": "tsv",
-    #             "limit": self.limit,
-    #         },
-    #         timeout=self.timeout,
-    #     )
-    #     response.raise_for_status()
-    #     return self._parse_tsv(response.text)
     def _get_tsv(self, query: str, columns: str) -> list[dict]:
+        params: dict[str, str | int] = {
+            "query": query,
+            "columns": columns,
+            "format": "tsv",
+            "limit": min(self.limit, 10),
+        }
         response = self._session.get(
             RHEA_ENDPOINT,
-            params={
-                "query": query,
-                "columns": columns,
-                "format": "tsv",
-                "limit": min(self.limit, 10),
-            },
+            params=params,
             timeout=self.timeout,
         )
 
         if response.status_code >= 400:
-            logger.error(
-                "Rhea returned HTTP %s for query %r: %s",
-                response.status_code,
-                query,
-                response.text[:1000],
-            )
             response.raise_for_status()
 
         return self._parse_tsv(response.text)
@@ -88,7 +70,6 @@ class RheaStore:
         if not match:
             raise ValueError(f"Invalid ChEBI ID: {chebi_id!r}")
 
-        exact_id = f"CHEBI:{match.group(1)}"
         rows = self._get_tsv(
             query=f"chebi:{match.group(1)}",
             columns="rhea-id,equation,chebi,chebi-id",
